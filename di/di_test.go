@@ -72,8 +72,8 @@ func TestEmptyContainer_ResolveFailsWithNotFound(t *testing.T) {
 func TestMultipleContainers_AreIsolated(t *testing.T) {
 	c1 := New()
 	c2 := New()
-	Depends[*sess](c1, mkSess(1))
-	Depends[*sess](c2, mkSess(2))
+	D[*sess](c1, mkSess(1))
+	D[*sess](c2, mkSess(2))
 
 	if v := MustResolve[*sess](c1); v.id != 1 {
 		t.Errorf("c1 id = %d, want 1", v.id)
@@ -89,7 +89,7 @@ func TestMultipleContainers_AreIsolated(t *testing.T) {
 
 func TestDepends_ReturnsHandleWithSameContainer(t *testing.T) {
 	c := New()
-	d := Depends[*sess](c, mkSess(1))
+	d := D[*sess](c, mkSess(1))
 	if d == nil {
 		t.Fatal("Depends returned nil")
 	}
@@ -100,29 +100,29 @@ func TestDepends_ReturnsHandleWithSameContainer(t *testing.T) {
 
 func TestDepends_NilContainer_Panics(t *testing.T) {
 	defer expectPanic(t, "expected panic for nil container")
-	Depends[*sess](nil, mkSess(1))
+	D[*sess](nil, mkSess(1))
 }
 
 func TestDepends_NilFn_Panics(t *testing.T) {
 	defer expectPanic(t, "expected panic for nil fn")
-	Depends[*sess](New(), nil)
+	D[*sess](New(), nil)
 }
 
 func TestDepends_NotAFunction_Panics(t *testing.T) {
 	defer expectPanic(t, "expected panic for non-function")
-	Depends[*sess](New(), "not a function")
+	D[*sess](New(), "not a function")
 }
 
 func TestDepends_DuplicateType_Panics(t *testing.T) {
 	c := New()
-	Depends[*sess](c, mkSess(1))
+	D[*sess](c, mkSess(1))
 	defer expectPanic(t, "expected panic for duplicate registration")
-	Depends[*sess](c, mkSess(2))
+	D[*sess](c, mkSess(2))
 }
 
 func TestDepends_UnsupportedReturnArity_ReturnsError(t *testing.T) {
 	c := New()
-	Depends[*sess](c, func() (*sess, error, string) { return nil, nil, "x" })
+	D[*sess](c, func() (*sess, error, string) { return nil, nil, "x" })
 	_, err := Resolve[*sess](c)
 	if err == nil {
 		t.Fatal("expected error for 3 return values")
@@ -138,7 +138,7 @@ func TestDepends_UnsupportedReturnArity_ReturnsError(t *testing.T) {
 
 func TestDepends_ZeroArgFactory(t *testing.T) {
 	c := New()
-	d := Depends[*sess](c, mkSess(99))
+	d := D[*sess](c, mkSess(99))
 	if v := d.MustGet(); v.id != 99 {
 		t.Fatalf("id = %d, want 99", v.id)
 	}
@@ -146,12 +146,12 @@ func TestDepends_ZeroArgFactory(t *testing.T) {
 
 func TestDepends_LinearChain_AllInjected(t *testing.T) {
 	c := New()
-	Depends[*sess](c, mkSess(42))
-	Depends[*daoT](c, mkDao)
-	Depends[*repoT](c, mkRepo)
-	Depends[*otherD](c, mkOther)
+	D[*sess](c, mkSess(42))
+	D[*daoT](c, mkDao)
+	D[*repoT](c, mkRepo)
+	D[*otherD](c, mkOther)
 
-	svc := Depends[*svcT](c, mkSvc).MustGet()
+	svc := D[*svcT](c, mkSvc).MustGet()
 	if svc.r.d.s.id != 42 {
 		t.Errorf("sess.id = %d, want 42", svc.r.d.s.id)
 	}
@@ -179,18 +179,18 @@ func TestDepends_DeepChain(t *testing.T) {
 	type l10 struct{ A *l9 }
 
 	c := New()
-	Depends[*l0](c, func() *l0 { return &l0{Tag: 0} })
-	Depends[*l1](c, func(a *l0) *l1 { return &l1{A: a} })
-	Depends[*l2](c, func(a *l1) *l2 { return &l2{A: a} })
-	Depends[*l3](c, func(a *l2) *l3 { return &l3{A: a} })
-	Depends[*l4](c, func(a *l3) *l4 { return &l4{A: a} })
-	Depends[*l5](c, func(a *l4) *l5 { return &l5{A: a} })
-	Depends[*l6](c, func(a *l5) *l6 { return &l6{A: a} })
-	Depends[*l7](c, func(a *l6) *l7 { return &l7{A: a} })
-	Depends[*l8](c, func(a *l7) *l8 { return &l8{A: a} })
-	Depends[*l9](c, func(a *l8) *l9 { return &l9{A: a} })
+	D[*l0](c, func() *l0 { return &l0{Tag: 0} })
+	D[*l1](c, func(a *l0) *l1 { return &l1{A: a} })
+	D[*l2](c, func(a *l1) *l2 { return &l2{A: a} })
+	D[*l3](c, func(a *l2) *l3 { return &l3{A: a} })
+	D[*l4](c, func(a *l3) *l4 { return &l4{A: a} })
+	D[*l5](c, func(a *l4) *l5 { return &l5{A: a} })
+	D[*l6](c, func(a *l5) *l6 { return &l6{A: a} })
+	D[*l7](c, func(a *l6) *l7 { return &l7{A: a} })
+	D[*l8](c, func(a *l7) *l8 { return &l8{A: a} })
+	D[*l9](c, func(a *l8) *l9 { return &l9{A: a} })
 
-	top := Depends[*l10](c, func(a *l9) *l10 { return &l10{A: a} }).MustGet()
+	top := D[*l10](c, func(a *l9) *l10 { return &l10{A: a} }).MustGet()
 
 	// 通过 reflect 走 9 层
 	cur := any(top)
@@ -232,13 +232,13 @@ func TestDepends_WideDeps(t *testing.T) {
 	}
 
 	c := New()
-	Depends[*w1](c, func() *w1 { return &w1{v: 1} })
-	Depends[*w2](c, func() *w2 { return &w2{v: 2} })
-	Depends[*w3](c, func() *w3 { return &w3{v: 3} })
-	Depends[*w4](c, func() *w4 { return &w4{v: 4} })
-	Depends[*w5](c, func() *w5 { return &w5{v: 5} })
+	D[*w1](c, func() *w1 { return &w1{v: 1} })
+	D[*w2](c, func() *w2 { return &w2{v: 2} })
+	D[*w3](c, func() *w3 { return &w3{v: 3} })
+	D[*w4](c, func() *w4 { return &w4{v: 4} })
+	D[*w5](c, func() *w5 { return &w5{v: 5} })
 
-	w := Depends[*wide](c, func(a *w1, b *w2, c *w3, d *w4, e *w5) *wide {
+	w := D[*wide](c, func(a *w1, b *w2, c *w3, d *w4, e *w5) *wide {
 		return &wide{a: a, b: b, c: c, d: d, e: e}
 	}).MustGet()
 	if w.a.v+w.b.v+w.c.v+w.d.v+w.e.v != 15 {
@@ -250,13 +250,13 @@ func TestDepends_WideDeps(t *testing.T) {
 func TestDepends_DiamondDependency_SharesSingleton(t *testing.T) {
 	var cnt int32
 	c := New()
-	Depends[*diaBottom](c, func() *diaBottom {
+	D[*diaBottom](c, func() *diaBottom {
 		atomic.AddInt32(&cnt, 1)
 		return &diaBottom{v: 7}
 	})
-	Depends[*diaLeft](c, func(b *diaBottom) *diaLeft { return &diaLeft{b: b} })
-	Depends[*diaRight](c, func(b *diaBottom) *diaRight { return &diaRight{b: b} })
-	Depends[*diaTop](c, func(l *diaLeft, r *diaRight) *diaTop {
+	D[*diaLeft](c, func(b *diaBottom) *diaLeft { return &diaLeft{b: b} })
+	D[*diaRight](c, func(b *diaBottom) *diaRight { return &diaRight{b: b} })
+	D[*diaTop](c, func(l *diaLeft, r *diaRight) *diaTop {
 		return &diaTop{l: l, r: r}
 	})
 
@@ -277,12 +277,12 @@ func TestDepends_DiamondDependency_SharesSingleton(t *testing.T) {
 func TestSingleton_DependencyMemoized(t *testing.T) {
 	var cnt int32
 	c := New()
-	Depends[*sess](c, func() *sess {
+	D[*sess](c, func() *sess {
 		atomic.AddInt32(&cnt, 1)
 		return &sess{id: 1}
 	})
 
-	d := Depends[*daoT](c, mkDao)
+	d := D[*daoT](c, mkDao)
 	a := d.MustGet()
 	b := d.MustGet()
 	if a != b {
@@ -296,7 +296,7 @@ func TestSingleton_DependencyMemoized(t *testing.T) {
 func TestSingleton_FactoryInvokedOnce_EvenViaResolve(t *testing.T) {
 	var cnt int32
 	c := New()
-	Depends[*sess](c, func() *sess {
+	D[*sess](c, func() *sess {
 		atomic.AddInt32(&cnt, 1)
 		return &sess{id: 1}
 	})
@@ -329,8 +329,8 @@ func TestNotFoundError_TypeAndMessage(t *testing.T) {
 
 func TestNotFoundError_PropagatesThroughChain(t *testing.T) {
 	c := New()
-	Depends[*sess](c, mkSess(1))
-	Depends[*daoT](c, mkDao)
+	D[*sess](c, mkSess(1))
+	D[*daoT](c, mkDao)
 	// 故意不注册 *repoT / *otherD / *svcT
 
 	// mkSvc 依赖 *repoT 和 *otherD，二者都没注册
@@ -355,8 +355,8 @@ func TestNotFoundError_PropagatesThroughChain(t *testing.T) {
 func TestFactoryError_WrappedWithParamContext(t *testing.T) {
 	c := New()
 	custom := errors.New("db down")
-	Depends[*sess](c, func() (*sess, error) { return nil, custom })
-	Depends[*daoT](c, mkDao)
+	D[*sess](c, func() (*sess, error) { return nil, custom })
+	D[*daoT](c, mkDao)
 
 	_, err := Resolve[*daoT](c)
 	if err == nil {
@@ -376,7 +376,7 @@ func TestFactoryError_WrappedWithParamContext(t *testing.T) {
 func TestFactoryError_BareT(t *testing.T) {
 	c := New()
 	custom := errors.New("nope")
-	Depends[*sess](c, func() (*sess, error) { return nil, custom })
+	D[*sess](c, func() (*sess, error) { return nil, custom })
 	_, err := Resolve[*sess](c)
 	if !errors.Is(err, custom) {
 		t.Fatalf("err = %v, want wraps %v", err, custom)
@@ -385,7 +385,7 @@ func TestFactoryError_BareT(t *testing.T) {
 
 func TestReturnTypeMismatch_AtResolve(t *testing.T) {
 	c := New()
-	Depends[*sess](c, func() *daoT { return &daoT{} })
+	D[*sess](c, func() *daoT { return &daoT{} })
 
 	_, err := Resolve[*sess](c)
 	if err == nil {
@@ -398,7 +398,7 @@ func TestReturnTypeMismatch_AtResolve(t *testing.T) {
 
 func TestFactoryReturnsNil_TypedError(t *testing.T) {
 	c := New()
-	Depends[*sess](c, func() *sess { return nil })
+	D[*sess](c, func() *sess { return nil })
 
 	_, err := Resolve[*sess](c)
 	if err == nil {
@@ -416,7 +416,7 @@ func TestFactoryReturnsNil_TypedError(t *testing.T) {
 func TestValueType_NotPointer(t *testing.T) {
 	type cfg struct{ port int }
 	c := New()
-	Depends[cfg](c, func() cfg { return cfg{port: 8080} })
+	D[cfg](c, func() cfg { return cfg{port: 8080} })
 
 	v, err := Resolve[cfg](c)
 	if err != nil {
@@ -435,8 +435,8 @@ func TestValueType_ChainedDep(t *testing.T) {
 	type base struct{ id int }
 	type derived struct{ b base }
 	c := New()
-	Depends[base](c, func() base { return base{id: 3} })
-	Depends[derived](c, func(b base) derived { return derived{b: b} })
+	D[base](c, func() base { return base{id: 3} })
+	D[derived](c, func(b base) derived { return derived{b: b} })
 
 	v, err := Resolve[derived](c)
 	if err != nil {
@@ -453,7 +453,7 @@ func TestValueType_ChainedDep(t *testing.T) {
 
 func TestResolve_GenericAPI(t *testing.T) {
 	c := New()
-	Depends[*sess](c, mkSess(11))
+	D[*sess](c, mkSess(11))
 	v, err := Resolve[*sess](c)
 	if err != nil {
 		t.Fatal(err)
@@ -470,7 +470,7 @@ func TestMustResolve_PanicsOnError(t *testing.T) {
 
 func TestMustResolve_ReturnsValueOnSuccess(t *testing.T) {
 	c := New()
-	Depends[*sess](c, mkSess(7))
+	D[*sess](c, mkSess(7))
 	v := MustResolve[*sess](c)
 	if v.id != 7 {
 		t.Fatalf("id = %d", v.id)
@@ -483,8 +483,8 @@ func TestMustResolve_ReturnsValueOnSuccess(t *testing.T) {
 
 func TestInvoke_AutoInjectsParams(t *testing.T) {
 	c := New()
-	Depends[*sess](c, mkSess(3))
-	Depends[*daoT](c, mkDao)
+	D[*sess](c, mkSess(3))
+	D[*daoT](c, mkDao)
 
 	results, err := Invoke(c, mkDao)
 	if err != nil {
@@ -614,15 +614,15 @@ func TestCall_TypeMismatch_Errors(t *testing.T) {
 
 func TestConcurrent_ResolveReturnsSameInstance(t *testing.T) {
 	c := New()
-	var cnt int32
-	Depends[*sess](c, func() *sess {
-		atomic.AddInt32(&cnt, 1)
+	var cnt atomic.Int32
+	D[*sess](c, func() *sess {
+		cnt.Add(1)
 		return &sess{id: 1}
 	})
-	Depends[*daoT](c, mkDao)
-	Depends[*repoT](c, mkRepo)
-	Depends[*otherD](c, mkOther)
-	Depends[*svcT](c, mkSvc)
+	D[*daoT](c, mkDao)
+	D[*repoT](c, mkRepo)
+	D[*otherD](c, mkOther)
+	D[*svcT](c, mkSvc)
 
 	const n = 200
 	var wg sync.WaitGroup
@@ -644,7 +644,7 @@ func TestConcurrent_ResolveReturnsSameInstance(t *testing.T) {
 			break
 		}
 	}
-	if got := atomic.LoadInt32(&cnt); got != 1 {
+	if got := cnt.Load(); got != 1 {
 		t.Errorf("factory called %d times under concurrency, want 1", got)
 	}
 }
@@ -652,13 +652,13 @@ func TestConcurrent_ResolveReturnsSameInstance(t *testing.T) {
 func TestConcurrent_DiamondSharedAcrossGoroutines(t *testing.T) {
 	var cnt int32
 	c := New()
-	Depends[*diaBottom](c, func() *diaBottom {
+	D[*diaBottom](c, func() *diaBottom {
 		atomic.AddInt32(&cnt, 1)
 		return &diaBottom{v: 1}
 	})
-	Depends[*diaLeft](c, func(b *diaBottom) *diaLeft { return &diaLeft{b: b} })
-	Depends[*diaRight](c, func(b *diaBottom) *diaRight { return &diaRight{b: b} })
-	Depends[*diaTop](c, func(l *diaLeft, r *diaRight) *diaTop {
+	D[*diaLeft](c, func(b *diaBottom) *diaLeft { return &diaLeft{b: b} })
+	D[*diaRight](c, func(b *diaBottom) *diaRight { return &diaRight{b: b} })
+	D[*diaTop](c, func(l *diaLeft, r *diaRight) *diaTop {
 		return &diaTop{l: l, r: r}
 	})
 
@@ -702,8 +702,8 @@ func TestErrorMessages_AreStable(t *testing.T) {
 		{
 			name: "NotFound deep in chain",
 			setup: func(c *Container) {
-				Depends[*sess](c, mkSess(1))
-				Depends[*daoT](c, mkDao)
+				D[*sess](c, mkSess(1))
+				D[*daoT](c, mkDao)
 			},
 			action: func(c *Container) error {
 				_, err := Resolve[*svcT](c)
@@ -714,8 +714,8 @@ func TestErrorMessages_AreStable(t *testing.T) {
 		{
 			name: "Factory error wrapped",
 			setup: func(c *Container) {
-				Depends[*sess](c, func() (*sess, error) { return nil, fmt.Errorf("inner") })
-				Depends[*daoT](c, mkDao)
+				D[*sess](c, func() (*sess, error) { return nil, fmt.Errorf("inner") })
+				D[*daoT](c, mkDao)
 			},
 			action: func(c *Container) error {
 				_, err := Resolve[*daoT](c)
@@ -747,11 +747,11 @@ func TestErrorMessages_AreStable(t *testing.T) {
 
 func BenchmarkResolve_SingletonHit(b *testing.B) {
 	c := New()
-	Depends[*sess](c, mkSess(1))
-	Depends[*daoT](c, mkDao)
-	Depends[*repoT](c, mkRepo)
-	Depends[*otherD](c, mkOther)
-	Depends[*svcT](c, mkSvc)
+	D[*sess](c, mkSess(1))
+	D[*daoT](c, mkDao)
+	D[*repoT](c, mkRepo)
+	D[*otherD](c, mkOther)
+	D[*svcT](c, mkSvc)
 	_ = MustResolve[*svcT](c) // warm cache
 
 	b.ResetTimer()
@@ -769,12 +769,12 @@ func BenchmarkResolve_DeepChain(b *testing.B) {
 	type l5 struct{ a *l4 }
 
 	c := New()
-	Depends[*l0](c, func() *l0 { return &l0{} })
-	Depends[*l1](c, func(a *l0) *l1 { return &l1{a: a} })
-	Depends[*l2](c, func(a *l1) *l2 { return &l2{a: a} })
-	Depends[*l3](c, func(a *l2) *l3 { return &l3{a: a} })
-	Depends[*l4](c, func(a *l3) *l4 { return &l4{a: a} })
-	_ = Depends[*l5](c, func(a *l4) *l5 { return &l5{a: a} })
+	D[*l0](c, func() *l0 { return &l0{} })
+	D[*l1](c, func(a *l0) *l1 { return &l1{a: a} })
+	D[*l2](c, func(a *l1) *l2 { return &l2{a: a} })
+	D[*l3](c, func(a *l2) *l3 { return &l3{a: a} })
+	D[*l4](c, func(a *l3) *l4 { return &l4{a: a} })
+	_ = D[*l5](c, func(a *l4) *l5 { return &l5{a: a} })
 	_ = MustResolve[*l5](c) // warm
 
 	b.ResetTimer()

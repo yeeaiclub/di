@@ -58,11 +58,11 @@ func getRoleRepository() (*RoleRepository, error) {
 func main() {
 	c := di.New()
 
-	di.Depends[*AsyncSession](c, getAsyncSession)
-	di.Depends[*UserDao](c, getUserDao)
-	di.Depends[*RoleRepository](c, getRoleRepository)
-	di.Depends[*UserRepository](c, getUserRepository)
-	UserServiceDep := di.Depends[*UserService](c, getUserService)
+	di.D[*AsyncSession](c, getAsyncSession)
+	di.D[*UserDao](c, getUserDao)
+	di.D[*RoleRepository](c, getRoleRepository)
+	di.D[*UserRepository](c, getUserRepository)
+	UserServiceDep := di.D[*UserService](c, getUserService)
 
 	// 整个调用链：UserService -> UserRepository -> UserDao -> AsyncSession，
 	svc, err := UserServiceDep.Get()

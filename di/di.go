@@ -178,13 +178,13 @@ func (d *Dep[T]) MustGet() T {
 // Container 返回该依赖所属的容器，便于链式组合。
 func (d *Dep[T]) Container() *Container { return d.c }
 
-// Depends 把工厂 fn 注册为类型 T 的提供者，并返回一个 *Dep[T] 句柄。
+// D 把工厂 fn 注册为类型 T 的提供者，并返回一个 *Dep[T] 句柄。
 //
 // fn 的参数类型会自动从 c 中解析（顺序无关、解析是惰性的）。
 // fn 的第一个返回值必须可断言为 T，否则会 panic。fn 的返回值支持：
 //   - 仅 T
 //   - (T, error)
-func Depends[T any](c *Container, fn any) *Dep[T] {
+func D[T any](c *Container, fn any) *Dep[T] {
 	var zero T
 	t := reflect.TypeOf(zero)
 	if t == nil {
