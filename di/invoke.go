@@ -9,7 +9,7 @@ import (
 //
 // 返回值是 fn 的所有返回值（已装箱成 any）。
 //
-// 适合「只想用一次、懒得注册」的临时调用；常规依赖建议用 Depends。
+// 适合「只想用一次、懒得注册」的临时调用；常规依赖建议用 D。
 func Invoke(c *Container, fn any) ([]any, error) {
 	if c == nil {
 		return nil, fmt.Errorf("di.Invoke: container is nil")
@@ -23,7 +23,7 @@ func Invoke(c *Container, fn any) ([]any, error) {
 		return nil, fmt.Errorf("di.Invoke: expected function, got %T", fn)
 	}
 
-	args, err := c.resolveArgs(fnType)
+	args, err := c.resolveArgs(fnType, &resolveCtx{})
 	if err != nil {
 		return nil, err
 	}

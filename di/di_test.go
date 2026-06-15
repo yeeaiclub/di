@@ -793,3 +793,365 @@ func expectPanic(t *testing.T, msg string) {
 		t.Fatal(msg)
 	}
 }
+
+// ============================================================================
+// 12. Named 注入：同类型多实例
+// ============================================================================
+
+// 双 *sql.DB 风格的占位类型
+type primaryDB struct{ id int }
+type replicaDB struct{ id int }
+
+func TestNamed_DistinguishesSameType(t *testing.T) {
+	c := New()
+	D[*primaryDB](c, func() *primaryDB { return &primaryDB{id: 1} }, Named("primary"))
+	D[*replicaDB](c, func() *replicaDB { return &replicaDB{id: 2} }, Named("replica"))
+
+	// 同类型不带名注册：第三个会用无名 variant
+	// 这里我们用 *primaryDB 做 key，所以带名/不带名都允许
+	p, err := ResolveNamed[*primaryDB](c, "primary")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if p.id != 1 {
+		t.Errorf("primary.id = %d, want 1", p.id)
+	}
+
+	// 没带名的 resolve 应该失败（因为唯一注册的是带名的）
+	if _, err := Resolve[*primaryDB](c); err == nil {
+		t.Error("expected NotFound for unnamed resolve")
+	}
+
+	r, err := ResolveNamed[*replicaDB](c, "replica")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if r.id != 2 {
+		t.Errorf("replica.id = %d, want 2", r.id)
+	}
+}
+
+func TestNamed_DuplicatePanics(t *testing.T) {
+	c := New()
+	D[*primaryDB](c, func() *primaryDB { return &primaryDB{id: 1} }, Named("primary"))
+	defer expectPanic(t, "expected panic for duplicate (type,name) registration")
+	D[*primaryDB](c, func() *primaryDB { return &primaryDB{id: 2} }, Named("primary"))
+}
+
+func TestNamed_NotFound_IncludesName(t *testing.T) {
+	c := New()
+	_, err := ResolveNamed[*primaryDB](c, "ghost")
+	var nf *NotFoundError
+	if !errors.As(err, &nf) {
+		t.Fatalf("err = %v, want *NotFoundError", err)
+	}
+	if nf.Name != "ghost" {
+		t.Errorf("nf.Name = %q, want %q", nf.Name, "ghost")
+	}
+	if !strings.Contains(nf.Error(), `"ghost"`) {
+		t.Errorf("err = %q, want contains name", nf.Error())
+	}
+}
+
+func TestNamed_SoleNamedVariant_ResolvedByParam(t *testing.T) {
+	// 形参里只写了类型，类型下恰好只有一个带名 variant，应自动取它。
+	c := New()
+	D[*primaryDB](c, func() *primaryDB { return &primaryDB{id: 7} }, Named("only"))
+
+	// 间接通过一个依赖了 *primaryDB 的工厂
+	type holder struct{ p *primaryDB }
+	D[*holder](c, func(p *primaryDB) *holder { return &holder{p: p} })
+
+	h := MustResolve[*holder](c)
+	if h.p.id != 7 {
+		t.Errorf("h.p.id = %d, want 7", h.p.id)
+	}
+}
+
+// ============================================================================
+// 13. Transient 生命周期：每次解析都新建
+// ============================================================================
+
+type transientCounter struct{ n int }
+
+func TestTransient_ResolvesNewInstance(t *testing.T) {
+	c := New()
+	var cnt int32
+	D[*transientCounter](c, func() *transientCounter {
+		atomic.AddInt32(&cnt, 1)
+		return &transientCounter{n: int(atomic.LoadInt32(&cnt))}
+	}, Transient())
+
+	a := MustResolve[*transientCounter](c)
+	b := MustResolve[*transientCounter](c)
+	c2 := MustResolve[*transientCounter](c)
+
+	if a == b || b == c2 || a == c2 {
+		t.Errorf("transient deps should be different pointers")
+	}
+	if got := atomic.LoadInt32(&cnt); got != 3 {
+		t.Errorf("factory invoked %d times, want 3", got)
+	}
+}
+
+func TestTransient_DoesNotShareAcrossGoroutines(t *testing.T) {
+	c := New()
+	var cnt int32
+	D[*transientCounter](c, func() *transientCounter {
+		atomic.AddInt32(&cnt, 1)
+		return &transientCounter{n: int(atomic.LoadInt32(&cnt))}
+	}, Transient())
+
+	const n = 100
+	var wg sync.WaitGroup
+	wg.Add(n)
+	for i := 0; i < n; i++ {
+		go func() {
+			defer wg.Done()
+			_ = MustResolve[*transientCounter](c)
+		}()
+	}
+	wg.Wait()
+	if got := atomic.LoadInt32(&cnt); got != n {
+		t.Errorf("factory invoked %d times, want %d", got, n)
+	}
+}
+
+// ============================================================================
+// 14. Scoped 生命周期：scope 内单例
+// ============================================================================
+
+type requestID struct{ id int }
+
+func TestScoped_OneInstancePerScope(t *testing.T) {
+	c := New()
+	var cnt int32
+	dep := D[*requestID](c, func() *requestID {
+		atomic.AddInt32(&cnt, 1)
+		return &requestID{id: int(atomic.LoadInt32(&cnt))}
+	}, Scoped())
+
+	scope1 := c.NewScope()
+	scope2 := c.NewScope()
+	defer scope1.Close()
+	defer scope2.Close()
+
+	a1 := dep.MustGetIn(scope1)
+	b1 := dep.MustGetIn(scope1)
+	a2 := dep.MustGetIn(scope2)
+	b2 := dep.MustGetIn(scope2)
+
+	if a1 != b1 {
+		t.Errorf("scope1: a1 != b1, want same")
+	}
+	if a2 != b2 {
+		t.Errorf("scope2: a2 != b2, want same")
+	}
+	if a1 == a2 {
+		t.Errorf("scope1 and scope2 share instance, want different")
+	}
+	if got := atomic.LoadInt32(&cnt); got != 2 {
+		t.Errorf("factory invoked %d times, want 2", got)
+	}
+}
+
+func TestScoped_WithoutScope_DegradesToSingleton(t *testing.T) {
+	c := New()
+	var cnt int32
+	dep := D[*requestID](c, func() *requestID {
+		atomic.AddInt32(&cnt, 1)
+		return &requestID{id: int(atomic.LoadInt32(&cnt))}
+	}, Scoped())
+
+	a := dep.MustGet()
+	b := dep.MustGet()
+	if a != b {
+		t.Error("scoped without scope should behave like singleton")
+	}
+	if got := atomic.LoadInt32(&cnt); got != 1 {
+		t.Errorf("factory invoked %d times, want 1", got)
+	}
+}
+
+func TestScoped_CloseIsolates(t *testing.T) {
+	c := New()
+	var cnt int32
+	dep := D[*requestID](c, func() *requestID {
+		atomic.AddInt32(&cnt, 1)
+		return &requestID{id: int(atomic.LoadInt32(&cnt))}
+	}, Scoped())
+
+	s1 := c.NewScope()
+	v1 := dep.MustGetIn(s1)
+	s1.Close()
+	// scope 关闭后，cache 被清空；新建一个 scope 应该拿到新实例
+	s1b := c.NewScope()
+	v1b := dep.MustGetIn(s1b)
+	if v1.id == v1b.id {
+		t.Error("closed scope should not share with new scope")
+	}
+	s1b.Close()
+}
+
+// ============================================================================
+// 15. 循环依赖检测
+// ============================================================================
+
+type cycA struct{}
+type cycB struct{}
+type cycC struct{}
+
+func TestCircular_Direct_AB(t *testing.T) {
+	c := New()
+	// 自指：A 的工厂需要 A
+	D[*cycA](c, func(a *cycA) *cycA { return &cycA{} })
+
+	_, err := Resolve[*cycA](c)
+	if err == nil {
+		t.Fatal("expected circular error")
+	}
+	var ce *CircularError
+	if !errors.As(err, &ce) {
+		t.Fatalf("err = %v, want *CircularError", err)
+	}
+	if !strings.Contains(ce.Error(), "circular") {
+		t.Errorf("msg = %q", ce.Error())
+	}
+}
+
+func TestCircular_Chain_ABC(t *testing.T) {
+	c := New()
+	D[*cycA](c, func(b *cycB) *cycA { return &cycA{} })
+	D[*cycB](c, func(c *cycC) *cycB { return &cycB{} })
+	D[*cycC](c, func(a *cycA) *cycC { return &cycC{} })
+
+	_, err := Resolve[*cycA](c)
+	if err == nil {
+		t.Fatal("expected circular error")
+	}
+	var ce *CircularError
+	if !errors.As(err, &ce) {
+		t.Fatalf("err = %v, want *CircularError", err)
+	}
+	// 链上应该出现 A, B, C, A
+	if len(ce.Chain) < 3 {
+		t.Errorf("chain = %v, want at least 3 entries", ce.Chain)
+	}
+}
+
+// ============================================================================
+// 16. 接口绑定（面向接口注入）
+// ============================================================================
+
+type Reader interface{ Read() string }
+type writer interface{ Write(s string) }
+
+type fileReader struct{ s string }
+
+func (f *fileReader) Read() string { return f.s }
+
+type fileWriter struct{ buf []string }
+
+func (f *fileWriter) Write(s string) { f.buf = append(f.buf, s) }
+
+func TestInterface_RegistersAndResolves(t *testing.T) {
+	c := New()
+	D[Reader](c, func() Reader { return &fileReader{s: "hello"} })
+
+	r, err := Resolve[Reader](c)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if r.Read() != "hello" {
+		t.Errorf("Read() = %q, want %q", r.Read(), "hello")
+	}
+}
+
+func TestInterface_TransitiveResolution(t *testing.T) {
+	c := New()
+	type svc struct {
+		r Reader
+		w writer
+	}
+	D[Reader](c, func() Reader { return &fileReader{s: "data"} })
+	D[writer](c, func() writer { return &fileWriter{} })
+	D[*svc](c, func(r Reader, w writer) *svc { return &svc{r: r, w: w} })
+
+	s := MustResolve[*svc](c)
+	if s.r.Read() != "data" {
+		t.Errorf("s.r.Read() = %q", s.r.Read())
+	}
+	s.w.Write("x")
+	if got := s.w.(*fileWriter).buf[0]; got != "x" {
+		t.Errorf("buf[0] = %q", got)
+	}
+}
+
+// ============================================================================
+// 17. 注册期校验（严格模式，可选开启）
+// ============================================================================
+
+func TestStrictValidation_PanicsOnMissingProvider(t *testing.T) {
+	c := New()
+	c.EnableStrictValidation()
+	defer expectPanic(t, "expected panic for missing provider in strict mode")
+	// *sess 没注册，mkSvc 需要它
+	D[*svcT](c, mkSvc)
+}
+
+func TestStrictValidation_PassesWhenAllPresent(t *testing.T) {
+	c := New()
+	c.EnableStrictValidation()
+	// 自底向上注册：所有 provider 都先到位
+	D[*sess](c, mkSess(1))
+	D[*daoT](c, mkDao)
+	D[*repoT](c, mkRepo)
+	D[*otherD](c, mkOther)
+	D[*svcT](c, mkSvc)
+
+	v := MustResolve[*svcT](c)
+	if v == nil {
+		t.Fatal("resolve returned nil")
+	}
+}
+
+func TestStrictValidation_OffByDefault(t *testing.T) {
+	c := New()
+	// 没开严格校验：自顶向下注册也不会 panic
+	D[*svcT](c, mkSvc)
+	D[*repoT](c, mkRepo)
+	D[*otherD](c, mkOther)
+	D[*daoT](c, mkDao)
+	D[*sess](c, mkSess(1))
+
+	v, err := Resolve[*svcT](c)
+	if err != nil {
+		t.Fatalf("err = %v", err)
+	}
+	if v == nil {
+		t.Fatal("resolve returned nil")
+	}
+}
+
+// ============================================================================
+// 18. Lifetime 元信息
+// ============================================================================
+
+func TestDep_LifetimeAndName(t *testing.T) {
+	c := New()
+	d1 := D[*sess](c, mkSess(1))
+	if d1.Lifetime() != LifetimeSingleton {
+		t.Errorf("default lifetime = %v, want Singleton", d1.Lifetime())
+	}
+	if d1.Name() != "" {
+		t.Errorf("unnamed dep has Name = %q", d1.Name())
+	}
+
+	d2 := D[*sess](c, mkSess(2), Named("two"), Transient())
+	if d2.Lifetime() != LifetimeTransient {
+		t.Errorf("explicit lifetime = %v, want Transient", d2.Lifetime())
+	}
+	if d2.Name() != "two" {
+		t.Errorf("Name = %q, want %q", d2.Name(), "two")
+	}
+}
