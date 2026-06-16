@@ -1,9 +1,9 @@
-// Package di 提供一个轻量的依赖注入容器：按类型注册工厂，解析时自动
+// Package depends 提供一个轻量的依赖注入容器：按类型注册工厂，解析时自动
 // 注入形参，并按 Lifetime（单例 / 每次新建 / 作用域内单例）缓存结果。
 //
-// 支持同类型多实例（通过 di.Named("name") 区分）、循环依赖检测以及
+// 支持同类型多实例（通过 depends.Named("name") 区分）、循环依赖检测以及
 // 注册期的浅校验。
-package di
+package depends
 
 import (
 	"fmt"
@@ -113,7 +113,7 @@ func (s *Scope) Close() {
 func ResolveIn[T any](scope *Scope, dep *Dep[T]) (T, error) {
 	if dep == nil {
 		var zero T
-		return zero, fmt.Errorf("di.ResolveIn: dep is nil")
+		return zero, fmt.Errorf("depends.ResolveIn: dep is nil")
 	}
 	return dep.getIn(scope)
 }
@@ -195,7 +195,7 @@ func (c *Container) resolve(k key, lifetime Lifetime, scope *Scope, ctx *resolve
 		if ok {
 			return v, nil
 		}
-		return nil, fmt.Errorf("di: %v resolved concurrently but not cached", k)
+		return nil, fmt.Errorf("depends: %v resolved concurrently but not cached", k)
 	}
 	ch := make(chan struct{})
 	c.inflight[k] = ch
@@ -214,11 +214,11 @@ func (c *Container) resolve(k key, lifetime Lifetime, scope *Scope, ctx *resolve
 	}
 	if v == nil {
 		cacheMu.Unlock()
-		return nil, fmt.Errorf("di: factory for %v returned nil", k)
+		return nil, fmt.Errorf("depends: factory for %v returned nil", k)
 	}
 	if rv := reflect.ValueOf(v); rv.Kind() == reflect.Ptr && rv.IsNil() {
 		cacheMu.Unlock()
-		return nil, fmt.Errorf("di: factory for %v returned typed nil", k)
+		return nil, fmt.Errorf("depends: factory for %v returned typed nil", k)
 	}
 	if existing, ok := cache[k]; ok {
 		// 极端并发：已被别人先缓存了，沿用旧值。
@@ -262,12 +262,12 @@ func (c *Container) resolveArgs(fnType reflect.Type, ctx *resolveCtx) ([]reflect
 			}
 		}
 		if !ok {
-			return nil, fmt.Errorf("di: parameter %d (%v): %w",
+			return nil, fmt.Errorf("depends: parameter %d (%v): %w",
 				i, paramType, &NotFoundError{Type: paramType})
 		}
 		v, err := c.resolve(k, e.lifetime, ctx.scope, ctx)
 		if err != nil {
-			return nil, fmt.Errorf("di: parameter %d (%v): %w", i, paramType, err)
+			return nil, fmt.Errorf("depends: parameter %d (%v): %w", i, paramType, err)
 		}
 		args[i] = reflect.ValueOf(v)
 	}
@@ -298,7 +298,7 @@ func (c *Container) register(k key, e entry) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if _, exists := c.factories[k]; exists {
-		panic(fmt.Sprintf("di: factory for %v already registered", k))
+		panic(fmt.Sprintf("depends: factory for %v already registered", k))
 	}
 	c.factories[k] = e
 }
@@ -354,7 +354,7 @@ func (d *Dep[T]) getIn(scope *Scope) (T, error) {
 	}
 	out, ok := v.(T)
 	if !ok {
-		return zero, fmt.Errorf("di: cached value %T cannot be asserted to %v", v, d.k.t)
+		return zero, fmt.Errorf("depends: cached value %T cannot be asserted to %v", v, d.k.t)
 	}
 	return out, nil
 }
@@ -376,15 +376,15 @@ func (d *Dep[T]) Name() string { return d.k.name }
 //   - (T, error)
 //
 // 可选 opts：
-//   - di.Named("name")：让同名/同类型多实例可区分
-//   - di.Transient()：每次解析都新建
-//   - di.Scoped()：在 *Scope 内单例
+//   - depends.Named("name")：让同名/同类型多实例可区分
+//   - depends.Transient()：每次解析都新建
+//   - depends.Scoped()：在 *Scope 内单例
 func D[T any](c *Container, fn any, opts ...DepOption) *Dep[T] {
 	if c == nil {
-		panic("di.D: container is nil")
+		panic("depends.D: container is nil")
 	}
 	if fn == nil {
-		panic("di.D: fn is nil")
+		panic("depends.D: fn is nil")
 	}
 
 	cfg := depConfig{lifetime: LifetimeSingleton}
@@ -400,13 +400,13 @@ func D[T any](c *Container, fn any, opts ...DepOption) *Dep[T] {
 		t = reflect.TypeOf(&zero).Elem()
 	}
 	if t == nil {
-		panic(fmt.Sprintf("di.D: cannot infer type for %T", zero))
+		panic(fmt.Sprintf("depends.D: cannot infer type for %T", zero))
 	}
 
 	fnVal := reflect.ValueOf(fn)
 	fnType := fnVal.Type()
 	if fnType.Kind() != reflect.Func {
-		panic(fmt.Sprintf("di.D: fn must be a function, got %T", fn))
+		panic(fmt.Sprintf("depends.D: fn must be a function, got %T", fn))
 	}
 
 	k := key{t: t, name: cfg.name}
@@ -418,7 +418,7 @@ func D[T any](c *Container, fn any, opts ...DepOption) *Dep[T] {
 			pt := fnType.In(i)
 			if !c.hasFactory(pt, "") && !c.hasAnyNamedFactory(pt) {
 				panic(fmt.Sprintf(
-					"di.D: parameter %d of factory for %v has no registered provider (type %v)",
+					"depends.D: parameter %d of factory for %v has no registered provider (type %v)",
 					i, k, pt,
 				))
 			}
@@ -460,7 +460,7 @@ func interpretResults[T any](t reflect.Type, out []reflect.Value) (any, error) {
 		v, ok := out[0].Interface().(T)
 		if !ok {
 			return nil, fmt.Errorf(
-				"di.D[%v]: factory returned %v, cannot assert to %v",
+				"depends.D[%v]: factory returned %v, cannot assert to %v",
 				t, out[0].Type(), t,
 			)
 		}
@@ -472,13 +472,13 @@ func interpretResults[T any](t reflect.Type, out []reflect.Value) (any, error) {
 		v, ok := out[0].Interface().(T)
 		if !ok {
 			return nil, fmt.Errorf(
-				"di.D[%v]: factory returned %v, cannot assert to %v",
+				"depends.D[%v]: factory returned %v, cannot assert to %v",
 				t, out[0].Type(), t,
 			)
 		}
 		return v, nil
 	default:
-		return nil, fmt.Errorf("di.D[%v]: unsupported number of return values: %d", t, len(out))
+		return nil, fmt.Errorf("depends.D[%v]: unsupported number of return values: %d", t, len(out))
 	}
 }
 
@@ -508,7 +508,7 @@ func ResolveNamed[T any](c *Container, name string) (T, error) {
 		t = reflect.TypeOf(&zero).Elem()
 	}
 	if t == nil {
-		return zero, fmt.Errorf("di.ResolveNamed: cannot infer type for %T", zero)
+		return zero, fmt.Errorf("depends.ResolveNamed: cannot infer type for %T", zero)
 	}
 	return resolveNamed[T](c, t, name, nil)
 }
@@ -526,7 +526,7 @@ func MustResolveNamed[T any](c *Container, name string) T {
 func ResolveInNamed[T any](scope *Scope, name string) (T, error) {
 	if scope == nil {
 		var zero T
-		return zero, fmt.Errorf("di.ResolveInNamed: scope is nil")
+		return zero, fmt.Errorf("depends.ResolveInNamed: scope is nil")
 	}
 	var zero T
 	t := reflect.TypeOf(zero)
@@ -534,7 +534,7 @@ func ResolveInNamed[T any](scope *Scope, name string) (T, error) {
 		t = reflect.TypeOf(&zero).Elem()
 	}
 	if t == nil {
-		return zero, fmt.Errorf("di.ResolveInNamed: cannot infer type for %T", zero)
+		return zero, fmt.Errorf("depends.ResolveInNamed: cannot infer type for %T", zero)
 	}
 	return resolveNamed[T](scope.c, t, name, scope)
 }
@@ -556,7 +556,7 @@ func resolveNamed[T any](c *Container, t reflect.Type, name string, scope *Scope
 	}
 	out, ok := v.(T)
 	if !ok {
-		return zero, fmt.Errorf("di.Resolve: cached value %T cannot be asserted to %v", v, t)
+		return zero, fmt.Errorf("depends.Resolve: cached value %T cannot be asserted to %v", v, t)
 	}
 	return out, nil
 }

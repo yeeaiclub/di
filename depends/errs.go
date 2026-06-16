@@ -1,4 +1,4 @@
-package di
+package depends
 
 import (
 	"fmt"
@@ -15,9 +15,9 @@ type NotFoundError struct {
 
 func (e *NotFoundError) Error() string {
 	if e.Name == "" {
-		return fmt.Sprintf("di: no factory registered for type %v", e.Type)
+		return fmt.Sprintf("depends: no factory registered for type %v", e.Type)
 	}
-	return fmt.Sprintf("di: no factory registered for type %v with name %q", e.Type, e.Name)
+	return fmt.Sprintf("depends: no factory registered for type %v with name %q", e.Type, e.Name)
 }
 
 // CircularError 表示解析过程中出现了循环依赖（A -> B -> A）。
@@ -26,6 +26,6 @@ type CircularError struct {
 }
 
 func (e *CircularError) Error() string {
-	return fmt.Sprintf("di: circular dependency detected: %s",
+	return fmt.Sprintf("depends: circular dependency detected: %s",
 		strings.Join(e.Chain, " -> "))
 }

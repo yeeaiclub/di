@@ -4,7 +4,7 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/yumosx/depends/di"
+	"github.com/yeeaiclub/di/depends"
 )
 
 // ---------- 领域类型 ----------
@@ -56,18 +56,18 @@ func getRoleRepository() (*RoleRepository, error) {
 }
 
 func main() {
-	c := di.New()
+	c := depends.New()
 
-	di.D[*AsyncSession](c, getAsyncSession)
-	di.D[*UserDao](c, getUserDao)
-	di.D[*RoleRepository](c, getRoleRepository)
-	di.D[*UserRepository](c, getUserRepository)
-	UserServiceDep := di.D[*UserService](c, getUserService)
+	depends.D[*AsyncSession](c, getAsyncSession)
+	depends.D[*UserDao](c, getUserDao)
+	depends.D[*RoleRepository](c, getRoleRepository)
+	depends.D[*UserRepository](c, getUserRepository)
+	UserServiceDep := depends.D[*UserService](c, getUserService)
 
 	// 整个调用链：UserService -> UserRepository -> UserDao -> AsyncSession，
 	svc, err := UserServiceDep.Get()
 	if err != nil {
-		var notFound *di.NotFoundError
+		var notFound *depends.NotFoundError
 		if errors.As(err, &notFound) {
 			fmt.Println("missing dep:", notFound)
 		}

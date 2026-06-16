@@ -1,4 +1,4 @@
-package di
+package depends
 
 // Lifetime 决定一个依赖被缓存的粒度。
 type Lifetime int

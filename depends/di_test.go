@@ -1,4 +1,4 @@
-package di
+package depends
 
 import (
 	"errors"
@@ -62,7 +62,7 @@ func TestEmptyContainer_ResolveFailsWithNotFound(t *testing.T) {
 		t.Fatalf("err type = %T, want *NotFoundError", err)
 	}
 	if nf.Type != reflect.TypeOf((*sess)(nil)) {
-		t.Errorf("nf.Type = %v, want *di.sess", nf.Type)
+		t.Errorf("nf.Type = %v, want *depends.sess", nf.Type)
 	}
 	if !strings.Contains(nf.Error(), "sess") {
 		t.Errorf("error msg = %q, want contains 'sess'", nf.Error())
@@ -322,7 +322,7 @@ func TestNotFoundError_TypeAndMessage(t *testing.T) {
 	if nf.Type != want {
 		t.Errorf("nf.Type = %v, want %v", nf.Type, want)
 	}
-	if !strings.Contains(nf.Error(), "*di.sess") {
+	if !strings.Contains(nf.Error(), "*depends.sess") {
 		t.Errorf("err = %q", nf.Error())
 	}
 }
@@ -344,7 +344,7 @@ func TestNotFoundError_PropagatesThroughChain(t *testing.T) {
 	}
 	// 错误类型应该指向第一个无法解析的参数
 	if nf.Type != reflect.TypeOf((*repoT)(nil)) {
-		t.Errorf("nf.Type = %v, want *di.repoT", nf.Type)
+		t.Errorf("nf.Type = %v, want *depends.repoT", nf.Type)
 	}
 	// 错误链上要带「parameter 0」这种上下文
 	if !strings.Contains(err.Error(), "parameter") {
@@ -368,8 +368,8 @@ func TestFactoryError_WrappedWithParamContext(t *testing.T) {
 	if !strings.Contains(err.Error(), "parameter 0") {
 		t.Errorf("err msg should mention parameter 0, got %q", err.Error())
 	}
-	if !strings.Contains(err.Error(), "*di.sess") {
-		t.Errorf("err msg should mention *di.sess, got %q", err.Error())
+	if !strings.Contains(err.Error(), "*depends.sess") {
+		t.Errorf("err msg should mention *depends.sess, got %q", err.Error())
 	}
 }
 
@@ -697,7 +697,7 @@ func TestErrorMessages_AreStable(t *testing.T) {
 			name:     "NotFound for empty",
 			setup:    func(c *Container) {},
 			action:   func(c *Container) error { _, err := Resolve[*sess](c); return err },
-			contains: []string{"*di.sess"},
+			contains: []string{"*depends.sess"},
 		},
 		{
 			name: "NotFound deep in chain",
@@ -709,7 +709,7 @@ func TestErrorMessages_AreStable(t *testing.T) {
 				_, err := Resolve[*svcT](c)
 				return err
 			},
-			contains: []string{"*di.svcT"},
+			contains: []string{"*depends.svcT"},
 		},
 		{
 			name: "Factory error wrapped",
@@ -721,7 +721,7 @@ func TestErrorMessages_AreStable(t *testing.T) {
 				_, err := Resolve[*daoT](c)
 				return err
 			},
-			contains: []string{"inner", "parameter 0", "*di.sess"},
+			contains: []string{"inner", "parameter 0", "*depends.sess"},
 		},
 	}
 	for _, tc := range cases {

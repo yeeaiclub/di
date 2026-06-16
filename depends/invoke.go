@@ -1,4 +1,4 @@
-package di
+package depends
 
 import (
 	"fmt"
@@ -12,15 +12,15 @@ import (
 // 适合「只想用一次、懒得注册」的临时调用；常规依赖建议用 D。
 func Invoke(c *Container, fn any) ([]any, error) {
 	if c == nil {
-		return nil, fmt.Errorf("di.Invoke: container is nil")
+		return nil, fmt.Errorf("depends.Invoke: container is nil")
 	}
 	if fn == nil {
-		return nil, fmt.Errorf("di.Invoke: fn is nil")
+		return nil, fmt.Errorf("depends.Invoke: fn is nil")
 	}
 	fnVal := reflect.ValueOf(fn)
 	fnType := fnVal.Type()
 	if fnType.Kind() != reflect.Func {
-		return nil, fmt.Errorf("di.Invoke: expected function, got %T", fn)
+		return nil, fmt.Errorf("depends.Invoke: expected function, got %T", fn)
 	}
 
 	args, err := c.resolveArgs(fnType, &resolveCtx{})
@@ -45,21 +45,21 @@ func Call[T any](c *Container, fn any) (T, error) {
 	}
 	if len(results) == 0 {
 		var zero T
-		return zero, fmt.Errorf("di.Call: function returned no values")
+		return zero, fmt.Errorf("depends.Call: function returned no values")
 	}
 	switch len(results) {
 	case 1:
 		v, ok := results[0].(T)
 		if !ok {
 			var zero T
-			return zero, fmt.Errorf("di.Call: return type %T is not %T", results[0], zero)
+			return zero, fmt.Errorf("depends.Call: return type %T is not %T", results[0], zero)
 		}
 		return v, nil
 	case 2:
 		v, ok := results[0].(T)
 		if !ok {
 			var zero T
-			return zero, fmt.Errorf("di.Call: return type %T is not %T", results[0], zero)
+			return zero, fmt.Errorf("depends.Call: return type %T is not %T", results[0], zero)
 		}
 		if e, _ := results[1].(error); e != nil {
 			return v, e
@@ -67,6 +67,6 @@ func Call[T any](c *Container, fn any) (T, error) {
 		return v, nil
 	default:
 		var zero T
-		return zero, fmt.Errorf("di.Call: unsupported number of return values: %d", len(results))
+		return zero, fmt.Errorf("depends.Call: unsupported number of return values: %d", len(results))
 	}
 }
